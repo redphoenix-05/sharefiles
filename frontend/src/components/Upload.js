@@ -78,7 +78,13 @@ function Upload() {
         setUploadSuccess(true);
       }
     } catch (err) {
-      setError(err.response?.data?.error || 'Failed to upload file');
+      const responseError = err.response?.data?.error;
+      const statusError = err.response?.status
+        ? `Upload failed (${err.response.status})`
+        : null;
+      const networkError = err.request ? 'Upload failed. The server did not respond.' : null;
+
+      setError(responseError || networkError || statusError || 'Failed to upload file');
     } finally {
       setUploading(false);
     }
