@@ -1,7 +1,10 @@
 import React, { useState } from 'react';
 import axios from 'axios';
 
-const API_URL = 'http://localhost:5000/api';
+const API_URL = process.env.REACT_APP_API_URL || '/api';
+const MAX_FILE_SIZE_MB = Number(
+  process.env.REACT_APP_MAX_FILE_SIZE_MB || (window.location.hostname === 'localhost' ? 50 : 4)
+);
 
 function Upload() {
   const [selectedFile, setSelectedFile] = useState(null);
@@ -19,10 +22,9 @@ function Upload() {
   const validateAndSetFile = (file) => {
     if (!file) return;
 
-    // Check file size (50MB limit)
-    const maxSize = 50 * 1024 * 1024; // 50MB in bytes
+    const maxSize = MAX_FILE_SIZE_MB * 1024 * 1024;
     if (file.size > maxSize) {
-      setError('File size must be less than 50MB');
+      setError(`File size must be less than ${MAX_FILE_SIZE_MB}MB`);
       return;
     }
 
@@ -177,7 +179,7 @@ function Upload() {
             >
               Browse Files
             </label>
-            <p className="text-gray-500 text-xs mt-4">Maximum file size: 50MB</p>
+            <p className="text-gray-500 text-xs mt-4">Maximum file size: {MAX_FILE_SIZE_MB}MB</p>
           </>
         ) : (
           <div className="space-y-4">
