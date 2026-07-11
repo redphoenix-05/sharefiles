@@ -109,29 +109,29 @@ function Upload() {
     return (
       <div className="text-center">
         <div className="mb-6">
-          <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <svg className="w-10 h-10 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-green-100 sm:h-20 sm:w-20">
+            <svg className="h-8 w-8 text-green-500 sm:h-10 sm:w-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
             </svg>
           </div>
-          <h3 className="text-2xl font-bold text-gray-800 mb-2">Upload Successful!</h3>
-          <p className="text-gray-600 mb-6">Share this PIN to allow others to download your file</p>
+          <h3 className="mb-2 text-xl font-bold text-gray-800 sm:text-2xl">Upload Successful!</h3>
+          <p className="mb-6 text-sm text-gray-600 sm:text-base">Share this PIN to allow others to download your file</p>
         </div>
 
-        <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-6 mb-6">
+        <div className="mb-6 rounded-lg border-2 border-blue-200 bg-blue-50 p-4 sm:p-6">
           <p className="text-sm text-gray-600 mb-2">Your 4-digit PIN</p>
-          <div className="text-5xl font-bold text-blue-600 tracking-widest mb-2">
+          <div className="mb-2 text-4xl font-bold tracking-[0.3em] text-blue-600 sm:text-5xl">
             {pin}
           </div>
           <p className="text-xs text-gray-500">This PIN will expire in 24 hours</p>
         </div>
 
         <div className="bg-gray-50 rounded-lg p-4 mb-6">
-          <div className="flex items-center justify-between text-sm">
+          <div className="flex flex-col items-start justify-between gap-1 text-left text-sm sm:flex-row sm:items-center">
             <span className="text-gray-600">File:</span>
-            <span className="font-semibold text-gray-800 truncate ml-2">{selectedFile.name}</span>
+            <span className="max-w-full break-all font-semibold text-gray-800 sm:ml-2 sm:text-right">{selectedFile.name}</span>
           </div>
-          <div className="flex items-center justify-between text-sm mt-2">
+          <div className="mt-2 flex items-center justify-between text-sm">
             <span className="text-gray-600">Size:</span>
             <span className="font-semibold text-gray-800">{formatFileSize(selectedFile.size)}</span>
           </div>
@@ -149,11 +149,11 @@ function Upload() {
 
   return (
     <div>
-      <h2 className="text-2xl font-bold text-gray-800 mb-6">Send a File</h2>
+      <h2 className="mb-6 text-2xl font-bold text-gray-800">Send a File</h2>
 
       {/* Drag and Drop Area */}
       <div
-        className={`relative border-3 border-dashed rounded-lg p-8 text-center transition-all duration-200 ${
+        className={`relative rounded-lg border-2 border-dashed p-5 text-center transition-all duration-200 sm:p-8 ${
           dragActive
             ? 'border-blue-500 bg-blue-50'
             : 'border-gray-300 hover:border-gray-400'
@@ -173,11 +173,11 @@ function Upload() {
         {!selectedFile ? (
           <>
             <div className="mb-4">
-              <svg className="w-16 h-16 text-gray-400 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="mx-auto h-12 w-12 text-gray-400 sm:h-16 sm:w-16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
               </svg>
             </div>
-            <p className="text-gray-600 mb-2">Drag and drop your file here</p>
+            <p className="mb-2 text-sm text-gray-600 sm:text-base">Drag and drop your file here</p>
             <p className="text-gray-500 text-sm mb-4">or</p>
             <label
               htmlFor="fileInput"
@@ -190,19 +190,19 @@ function Upload() {
         ) : (
           <div className="space-y-4">
             <div className="bg-gray-50 rounded-lg p-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-3">
-                  <svg className="w-10 h-10 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex min-w-0 items-start space-x-3">
+                  <svg className="mt-0.5 h-9 w-9 flex-shrink-0 text-blue-500 sm:h-10 sm:w-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
                   </svg>
-                  <div className="text-left">
-                    <p className="font-semibold text-gray-800 truncate max-w-xs">{selectedFile.name}</p>
+                  <div className="min-w-0 text-left">
+                    <p className="break-all font-semibold text-gray-800">{selectedFile.name}</p>
                     <p className="text-sm text-gray-500">{formatFileSize(selectedFile.size)}</p>
                   </div>
                 </div>
                 <button
                   onClick={resetUpload}
-                  className="text-red-500 hover:text-red-700 transition"
+                  className="flex-shrink-0 text-red-500 transition hover:text-red-700"
                 >
                   <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -237,11 +237,11 @@ function Upload() {
       </div>
 
       {error && (
-        <div className="mt-4 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg flex items-center">
-          <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
+        <div className="mt-4 flex items-start rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-left text-red-700">
+          <svg className="mr-2 mt-0.5 h-5 w-5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
             <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
           </svg>
-          {error}
+          <span className="break-words text-sm sm:text-base">{error}</span>
         </div>
       )}
     </div>
