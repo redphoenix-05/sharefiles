@@ -56,6 +56,14 @@ async function connectToDatabase() {
   return bucket;
 }
 
+function getDatabaseErrorMessage(error) {
+  if (!process.env.MONGODB_URI) {
+    return 'MONGODB_URI is not configured on the server.';
+  }
+
+  return error?.message || 'Database connection failed.';
+}
+
 function getExpiryDate() {
   return new Date(Date.now() + 24 * 60 * 60 * 1000);
 }
@@ -157,7 +165,7 @@ app.post('/api/upload', (req, res) => {
       });
     } catch (uploadError) {
       console.error('Upload error:', uploadError);
-      return res.status(500).json({ error: 'Failed to upload file' });
+      return res.status(500).json({ error: getDatabaseErrorMessage(uploadError) });
     }
   });
 });
@@ -188,7 +196,7 @@ app.get('/api/file/:pin', async (req, res) => {
     });
   } catch (error) {
     console.error('File info error:', error);
-    return res.status(500).json({ error: 'Failed to retrieve file info' });
+    return res.status(500).json({ error: getDatabaseErrorMessage(error) });
   }
 });
 
@@ -230,7 +238,7 @@ app.get('/api/download/:pin', async (req, res) => {
     downloadStream.pipe(res);
   } catch (error) {
     console.error('Download error:', error);
-    return res.status(500).json({ error: 'Failed to download file' });
+    return res.status(500).json({ error: getDatabaseErrorMessage(error) });
   }
 });
 
@@ -239,23 +247,21 @@ app.get('/api/health', (req, res) => {
     status: 'OK',
     message: 'Server is running',
     maxFileSizeMb,
-    storage: 'mongodb-gridfs'
+    storage: 'mongodb-gridfs',
+    databaseConfigured: Boolean(process.env.MONGODB_URI)
   });
 });
 
 const PORT = process.env.PORT || 5000;
 
 if (require.main === module) {
-  connectToDatabase()
-    .then(() => {
-      app.listen(PORT, () => {
-        console.log(`Server running on port ${PORT}`);
-      });
-    })
-    .catch((error) => {
-      console.error('MongoDB connection error:', error);
-      process.exit(1);
-    });
+  app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+  });
+
+  connectToDatabase().catch((error) => {
+    console.error('MongoDB connection error:', error);
+  });
 }
 
 module.exports = app;
