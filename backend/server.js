@@ -3,109 +3,183 @@ const mongoose = require('mongoose');
 const cors = require('cors');
 const multer = require('multer');
 const path = require('path');
-const fs = require('fs');
-require('dotenv').config();
+const { GridFSBucket, ObjectId } = require('mongodb');
+const { Readable } = require('stream');
+require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
 
 const File = require('./models/File');
 
 const app = express();
+const isVercel = process.env.VERCEL === '1' || process.env.VERCEL === 'true';
+const maxFileSizeMb = Number(process.env.MAX_FILE_SIZE_MB || (isVercel ? 4 : 50));
+const maxFileSizeBytes = maxFileSizeMb * 1024 * 1024;
+let connectionPromise;
+let bucket;
 
-// Middleware
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Create uploads directory if it doesn't exist
-const uploadsDir = path.join(__dirname, 'uploads');
-if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir);
-}
-
-// Configure multer for file upload
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, uploadsDir);
-  },
-  filename: function (req, file, cb) {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, uniqueSuffix + path.extname(file.originalname));
-  }
-});
-
 const upload = multer({
-  storage: storage,
+  storage: multer.memoryStorage(),
   limits: {
-    fileSize: 50 * 1024 * 1024 // 50MB limit
+    fileSize: maxFileSizeBytes
   }
 });
+const uploadSingle = upload.single('file');
 
-// Generate 4-digit PIN
 function generatePin() {
   return Math.floor(1000 + Math.random() * 9000).toString();
 }
 
-// MongoDB connection
-mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/sharefiles')
-  .then(() => console.log('MongoDB connected successfully'))
-  .catch(err => console.error('MongoDB connection error:', err));
-
-// Routes
-
-// Upload file
-app.post('/api/upload', upload.single('file'), async (req, res) => {
-  try {
-    if (!req.file) {
-      return res.status(400).json({ error: 'No file uploaded' });
-    }
-
-    // Generate unique PIN
-    let pin;
-    let pinExists = true;
-    
-    while (pinExists) {
-      pin = generatePin();
-      const existingFile = await File.findOne({ pin });
-      if (!existingFile) {
-        pinExists = false;
-      }
-    }
-
-    // Save file info to database
-    const fileData = new File({
-      filename: req.file.filename,
-      originalName: req.file.originalname,
-      mimetype: req.file.mimetype,
-      size: req.file.size,
-      pin: pin,
-      path: req.file.path
-    });
-
-    await fileData.save();
-
-    res.json({
-      success: true,
-      pin: pin,
-      filename: req.file.originalname,
-      size: req.file.size
-    });
-  } catch (error) {
-    console.error('Upload error:', error);
-    res.status(500).json({ error: 'Failed to upload file' });
+async function connectToDatabase() {
+  if (!connectionPromise) {
+    connectionPromise = mongoose
+      .connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/sharefiles')
+      .then(() => {
+        bucket = new GridFSBucket(mongoose.connection.db, { bucketName: 'uploads' });
+        console.log('MongoDB connected successfully');
+        return mongoose.connection;
+      })
+      .catch((error) => {
+        connectionPromise = null;
+        throw error;
+      });
   }
+
+  await connectionPromise;
+
+  if (!bucket) {
+    bucket = new GridFSBucket(mongoose.connection.db, { bucketName: 'uploads' });
+  }
+
+  return bucket;
+}
+
+function getExpiryDate() {
+  return new Date(Date.now() + 24 * 60 * 60 * 1000);
+}
+
+async function deleteStoredFile(file) {
+  if (!file?.storageId || !ObjectId.isValid(file.storageId)) {
+    return;
+  }
+
+  const currentBucket = await connectToDatabase();
+
+  try {
+    await currentBucket.delete(new ObjectId(file.storageId));
+  } catch (error) {
+    if (error.code !== 26) {
+      throw error;
+    }
+  }
+}
+
+async function removeFileRecord(file) {
+  await deleteStoredFile(file);
+  await File.deleteOne({ _id: file._id });
+}
+
+async function cleanupExpiredFiles() {
+  const expiredFiles = await File.find({ expiresAt: { $lte: new Date() } }).select('_id storageId');
+
+  for (const expiredFile of expiredFiles) {
+    try {
+      await removeFileRecord(expiredFile);
+    } catch (error) {
+      console.error('Failed to clean up expired file:', error);
+    }
+  }
+}
+
+app.post('/api/upload', (req, res) => {
+  uploadSingle(req, res, async (error) => {
+    if (error?.code === 'LIMIT_FILE_SIZE') {
+      return res.status(400).json({
+        error: `File size must be less than ${maxFileSizeMb}MB`
+      });
+    }
+
+    if (error) {
+      console.error('Upload middleware error:', error);
+      return res.status(500).json({ error: 'Failed to upload file' });
+    }
+
+    try {
+      await connectToDatabase();
+      await cleanupExpiredFiles();
+
+      if (!req.file) {
+        return res.status(400).json({ error: 'No file uploaded' });
+      }
+
+      let pin;
+      let pinExists = true;
+
+      while (pinExists) {
+        pin = generatePin();
+        const existingFile = await File.findOne({ pin });
+        if (!existingFile) {
+          pinExists = false;
+        }
+      }
+
+      const currentBucket = await connectToDatabase();
+      const uploadStream = currentBucket.openUploadStream(req.file.originalname, {
+        contentType: req.file.mimetype
+      });
+
+      await new Promise((resolve, reject) => {
+        Readable.from(req.file.buffer)
+          .pipe(uploadStream)
+          .on('error', reject)
+          .on('finish', resolve);
+      });
+
+      const fileData = new File({
+        storageId: uploadStream.id.toString(),
+        originalName: req.file.originalname,
+        mimetype: req.file.mimetype,
+        size: req.file.size,
+        pin,
+        expiresAt: getExpiryDate()
+      });
+
+      await fileData.save();
+
+      return res.json({
+        success: true,
+        pin,
+        filename: req.file.originalname,
+        size: req.file.size,
+        maxFileSizeMb
+      });
+    } catch (uploadError) {
+      console.error('Upload error:', uploadError);
+      return res.status(500).json({ error: 'Failed to upload file' });
+    }
+  });
 });
 
-// Get file info by PIN
 app.get('/api/file/:pin', async (req, res) => {
   try {
+    await connectToDatabase();
+    await cleanupExpiredFiles();
+
     const { pin } = req.params;
-    
     const file = await File.findOne({ pin });
-    
+
     if (!file) {
       return res.status(404).json({ error: 'File not found or PIN invalid' });
     }
 
-    res.json({
+    if (file.expiresAt <= new Date()) {
+      await removeFileRecord(file);
+      return res.status(404).json({ error: 'File has expired' });
+    }
+
+    return res.json({
       success: true,
       filename: file.originalName,
       size: file.size,
@@ -114,40 +188,74 @@ app.get('/api/file/:pin', async (req, res) => {
     });
   } catch (error) {
     console.error('File info error:', error);
-    res.status(500).json({ error: 'Failed to retrieve file info' });
+    return res.status(500).json({ error: 'Failed to retrieve file info' });
   }
 });
 
-// Download file by PIN
 app.get('/api/download/:pin', async (req, res) => {
   try {
+    const currentBucket = await connectToDatabase();
+    await cleanupExpiredFiles();
+
     const { pin } = req.params;
-    
     const file = await File.findOne({ pin });
-    
+
     if (!file) {
       return res.status(404).json({ error: 'File not found or PIN invalid' });
     }
 
-    // Check if file exists on disk
-    if (!fs.existsSync(file.path)) {
-      return res.status(404).json({ error: 'File not found on server' });
+    if (file.expiresAt <= new Date()) {
+      await removeFileRecord(file);
+      return res.status(404).json({ error: 'File has expired' });
     }
 
-    res.download(file.path, file.originalName);
+    res.setHeader('Content-Type', file.mimetype);
+    res.setHeader('Content-Length', file.size);
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${encodeURIComponent(file.originalName)}"`
+    );
+
+    const downloadStream = currentBucket.openDownloadStream(new ObjectId(file.storageId));
+
+    downloadStream.on('error', (error) => {
+      console.error('Download stream error:', error);
+      if (!res.headersSent) {
+        res.status(404).json({ error: 'File not found on server' });
+      } else {
+        res.end();
+      }
+    });
+
+    downloadStream.pipe(res);
   } catch (error) {
     console.error('Download error:', error);
-    res.status(500).json({ error: 'Failed to download file' });
+    return res.status(500).json({ error: 'Failed to download file' });
   }
 });
 
-// Health check
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'OK', message: 'Server is running' });
+  res.json({
+    status: 'OK',
+    message: 'Server is running',
+    maxFileSizeMb,
+    storage: 'mongodb-gridfs'
+  });
 });
 
 const PORT = process.env.PORT || 5000;
 
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
+if (require.main === module) {
+  connectToDatabase()
+    .then(() => {
+      app.listen(PORT, () => {
+        console.log(`Server running on port ${PORT}`);
+      });
+    })
+    .catch((error) => {
+      console.error('MongoDB connection error:', error);
+      process.exit(1);
+    });
+}
+
+module.exports = app;

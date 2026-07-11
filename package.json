@@ -4,6 +4,8 @@
   "description": "MERN stack file sharing application with PIN-based access",
   "scripts": {
     "install-all": "npm install --prefix backend && npm install --prefix frontend",
+    "stop-dev": "powershell -Command \"$ports = 3000,5000; $connections = Get-NetTCPConnection -LocalPort $ports -State Listen -ErrorAction SilentlyContinue; $processIds = $connections | Select-Object -ExpandProperty OwningProcess -Unique; foreach ($processId in $processIds) { Stop-Process -Id $processId -Force -ErrorAction SilentlyContinue }\"",
+    "dev": "npm run stop-dev && concurrently \"npm run dev --prefix backend\" \"npm start --prefix frontend\"",
     "backend": "npm start --prefix backend",
     "frontend": "npm start --prefix frontend",
     "dev-backend": "npm run dev --prefix backend",
@@ -18,5 +20,8 @@
     "tailwindcss"
   ],
   "author": "",
-  "license": "MIT"
+  "license": "MIT",
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  }
 }

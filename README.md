@@ -22,7 +22,7 @@ A secure file sharing application built with the MERN stack that allows users to
 - Node.js
 - Express
 - MongoDB
-- Multer (file uploads)
+- Multer + MongoDB GridFS (file uploads)
 - Mongoose
 
 ## Prerequisites
@@ -52,17 +52,18 @@ npm install
 ```
 
 ### 4. Configure Environment Variables
-Create a `.env` file in the backend folder (already created) and update if needed:
+Create a `.env` file in the project root using `.env.example` as a guide:
 ```
 PORT=5000
 MONGODB_URI=mongodb://localhost:27017/sharefiles
 NODE_ENV=development
+MAX_FILE_SIZE_MB=50
 ```
 
 ## Running the Application
 
 ### 1. Start MongoDB
-Make sure MongoDB is running on your system:
+Make sure MongoDB is running on your system if you are not using MongoDB Atlas:
 ```bash
 mongod
 ```
@@ -156,11 +157,29 @@ sharefiles/
 
 ## Security Features
 
-- File size validation (50MB limit)
+- File size validation (environment-configurable)
 - 4-digit PIN generation
 - Unique PIN for each file
 - Automatic file expiration after 24 hours
 - CORS protection
+
+## Vercel Deployment
+
+This repo is configured for root-level Vercel deployment:
+
+- `frontend/` is built as the static CRA app
+- `api/index.js` exposes the Express backend as a serverless function
+- uploaded files are stored in MongoDB GridFS instead of local disk
+
+Set these environment variables in Vercel before deploying:
+
+```bash
+MONGODB_URI=your-mongodb-connection-string
+NODE_ENV=production
+MAX_FILE_SIZE_MB=4
+```
+
+`MAX_FILE_SIZE_MB=4` is the safe default for Vercel serverless uploads. Local development can still use `50`.
 
 ## Future Enhancements
 

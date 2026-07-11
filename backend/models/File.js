@@ -1,7 +1,7 @@
 const mongoose = require('mongoose');
 
 const fileSchema = new mongoose.Schema({
-  filename: {
+  storageId: {
     type: String,
     required: true
   },
@@ -22,14 +22,14 @@ const fileSchema = new mongoose.Schema({
     required: true,
     unique: true
   },
-  path: {
-    type: String,
-    required: true
-  },
   createdAt: {
     type: Date,
-    default: Date.now,
-    expires: 86400 // File will be deleted after 24 hours
+    default: Date.now
+  },
+  expiresAt: {
+    type: Date,
+    required: true,
+    index: true
   }
 });
 

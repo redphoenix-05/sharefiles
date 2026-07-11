@@ -1,5 +1,7 @@
 # Dependencies
 node_modules/
+backend/node_modules/
+frontend/node_modules/
 /.pnp
 .pnp.js
 
@@ -9,9 +11,9 @@ node_modules/
 # Production
 /build
 /dist
+frontend/build/
 
-# Misc
-.DS_Store
+# Environment
 .env
 .env.local
 .env.development.local
@@ -31,8 +33,9 @@ yarn-error.log*
 *.swo
 *~
 
-# Backend specific
+# App data
 backend/uploads/
 
 # OS
+.DS_Store
 Thumbs.db
