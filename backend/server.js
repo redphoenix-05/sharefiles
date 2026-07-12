@@ -35,7 +35,9 @@ function generatePin() {
 async function connectToDatabase() {
   if (!connectionPromise) {
     connectionPromise = mongoose
-      .connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/sharefiles')
+      .connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/sharefiles', {
+        serverSelectionTimeoutMS: 10000
+      })
       .then(() => {
         bucket = new GridFSBucket(mongoose.connection.db, { bucketName: 'uploads' });
         console.log('MongoDB connected successfully');
