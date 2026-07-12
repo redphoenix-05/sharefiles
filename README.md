@@ -57,7 +57,7 @@ Create a `.env` file in the project root using `.env.example` as a guide:
 PORT=5000
 MONGODB_URI=mongodb://localhost:27017/sharefiles
 NODE_ENV=development
-MAX_FILE_SIZE_MB=50
+MAX_FILE_SIZE_MB=10
 ```
 
 ## Running the Application
@@ -176,10 +176,10 @@ Set these environment variables in Vercel before deploying:
 ```bash
 MONGODB_URI=your-mongodb-connection-string
 NODE_ENV=production
-MAX_FILE_SIZE_MB=4
+MAX_FILE_SIZE_MB=10
 ```
 
-`MAX_FILE_SIZE_MB=4` is the safe default for Vercel serverless uploads. Local development can still use `50`.
+`MAX_FILE_SIZE_MB=10` is the current app limit for both local development and Vercel.
 
 ## Future Enhancements
 

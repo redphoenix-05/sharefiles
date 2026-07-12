@@ -11,7 +11,7 @@ const File = require('./models/File');
 
 const app = express();
 const isVercel = process.env.VERCEL === '1' || process.env.VERCEL === 'true';
-const maxFileSizeMb = Number(process.env.MAX_FILE_SIZE_MB || (isVercel ? 4 : 50));
+const maxFileSizeMb = Number(process.env.MAX_FILE_SIZE_MB || 10);
 const maxFileSizeBytes = maxFileSizeMb * 1024 * 1024;
 let connectionPromise;
 let bucket;

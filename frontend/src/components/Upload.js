@@ -3,7 +3,7 @@ import axios from 'axios';
 
 const API_URL = process.env.REACT_APP_API_URL || '/api';
 const MAX_FILE_SIZE_MB = Number(
-  process.env.REACT_APP_MAX_FILE_SIZE_MB || (window.location.hostname === 'localhost' ? 50 : 4)
+  process.env.REACT_APP_MAX_FILE_SIZE_MB || 10
 );
 
 function Upload() {

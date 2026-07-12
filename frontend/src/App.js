@@ -3,7 +3,7 @@ import Upload from './components/Upload';
 import Download from './components/Download';
 
 const MAX_FILE_SIZE_MB = Number(
-  process.env.REACT_APP_MAX_FILE_SIZE_MB || (window.location.hostname === 'localhost' ? 50 : 4)
+  process.env.REACT_APP_MAX_FILE_SIZE_MB || 10
 );
 
 function App() {
