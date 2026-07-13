@@ -7,6 +7,19 @@ const MAX_TOTAL_UPLOAD_MB = Number(
 const MAX_FILES_PER_SHARE = Number(process.env.REACT_APP_MAX_FILES_PER_SHARE || 10);
 const PIN_DOWNLOAD_LIMIT = Number(process.env.REACT_APP_PIN_DOWNLOAD_LIMIT || 10);
 const SHARE_EXPIRY_HOURS = Number(process.env.REACT_APP_SHARE_EXPIRY_HOURS || 2);
+const UPLOAD_TIMEOUT_MS = 4 * 60 * 1000;
+
+function parseJsonSafely(value) {
+  if (!value || typeof value !== 'string') {
+    return null;
+  }
+
+  try {
+    return JSON.parse(value);
+  } catch (error) {
+    return null;
+  }
+}
 
 function Upload() {
   const [selectedFiles, setSelectedFiles] = useState([]);
@@ -89,7 +102,8 @@ function Upload() {
       const response = await new Promise((resolve, reject) => {
         const request = new XMLHttpRequest();
         request.open('POST', `${API_URL}/upload`);
-        request.responseType = 'json';
+        request.responseType = 'text';
+        request.timeout = UPLOAD_TIMEOUT_MS;
 
         request.upload.addEventListener('progress', (event) => {
           const total = event.total || totalSelectedSize;
@@ -103,14 +117,19 @@ function Upload() {
         });
 
         request.addEventListener('load', () => {
-          const responseData =
-            request.response && typeof request.response === 'object'
-              ? request.response
-              : request.responseText
-                ? JSON.parse(request.responseText)
-                : null;
+          const responseData = parseJsonSafely(request.responseText);
 
           if (request.status >= 200 && request.status < 300) {
+            if (!responseData?.success) {
+              reject({
+                response: {
+                  status: request.status,
+                  data: responseData || { error: 'Upload completed but the server response was invalid.' }
+                }
+              });
+              return;
+            }
+
             resolve(responseData);
             return;
           }
@@ -129,6 +148,18 @@ function Upload() {
 
         request.addEventListener('abort', () => {
           reject({ request });
+        });
+
+        request.addEventListener('timeout', () => {
+          reject({
+            request,
+            response: {
+              status: 408,
+              data: {
+                error: 'Upload timed out while waiting for the server to finish processing the file.'
+              }
+            }
+          });
         });
 
         request.send(formData);
