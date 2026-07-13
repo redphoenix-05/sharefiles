@@ -27,37 +27,39 @@ function App() {
         {/* Main Card */}
         <div className="mx-auto w-full max-w-2xl overflow-hidden rounded-2xl bg-white shadow-xl shadow-blue-100/60">
           {/* Tab Navigation */}
-          <div className="flex border-b">
-            <button
-              onClick={() => setActiveTab('send')}
-              className={`flex-1 px-3 py-4 text-center font-semibold transition-all duration-200 sm:px-6 ${
-                activeTab === 'send'
-                  ? 'bg-blue-500 text-white border-b-4 border-blue-600'
-                  : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
-              }`}
-            >
-              <div className="flex flex-col items-center justify-center gap-1 sm:flex-row sm:gap-2">
-                <svg className="h-5 w-5 sm:h-6 sm:w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                </svg>
-                <span className="text-sm sm:text-base">Send File</span>
-              </div>
-            </button>
-            <button
-              onClick={() => setActiveTab('receive')}
-              className={`flex-1 px-3 py-4 text-center font-semibold transition-all duration-200 sm:px-6 ${
-                activeTab === 'receive'
-                  ? 'bg-green-500 text-white border-b-4 border-green-600'
-                  : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
-              }`}
-            >
-              <div className="flex flex-col items-center justify-center gap-1 sm:flex-row sm:gap-2">
-                <svg className="h-5 w-5 sm:h-6 sm:w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10" />
-                </svg>
-                <span className="text-sm sm:text-base">Receive File</span>
-              </div>
-            </button>
+          <div className="border-b bg-white px-3 pt-3 sm:px-0 sm:pt-0">
+            <div className="flex overflow-hidden rounded-xl border border-gray-200 sm:rounded-none sm:border-0">
+              <button
+                onClick={() => setActiveTab('send')}
+                className={`flex-1 px-3 py-3 text-center font-semibold transition-all duration-200 sm:px-6 sm:py-4 ${
+                  activeTab === 'send'
+                    ? 'bg-blue-500 text-white border-b-4 border-blue-600'
+                    : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
+                }`}
+              >
+                <div className="flex flex-col items-center justify-center gap-1 sm:flex-row sm:gap-2">
+                  <svg className="h-5 w-5 sm:h-6 sm:w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                  </svg>
+                  <span className="text-sm sm:text-base">Send File</span>
+                </div>
+              </button>
+              <button
+                onClick={() => setActiveTab('receive')}
+                className={`flex-1 px-3 py-3 text-center font-semibold transition-all duration-200 sm:px-6 sm:py-4 ${
+                  activeTab === 'receive'
+                    ? 'bg-green-500 text-white border-b-4 border-green-600'
+                    : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
+                }`}
+              >
+                <div className="flex flex-col items-center justify-center gap-1 sm:flex-row sm:gap-2">
+                  <svg className="h-5 w-5 sm:h-6 sm:w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10" />
+                  </svg>
+                  <span className="text-sm sm:text-base">Receive File</span>
+                </div>
+              </button>
+            </div>
           </div>
 
           {/* Tab Content */}

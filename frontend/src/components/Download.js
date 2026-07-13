@@ -96,7 +96,15 @@ function Download() {
 
       {!shareInfo ? (
         <>
-          <div className="mb-6">
+          <form
+            className="mb-6"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (!loading && pin.length === 4) {
+                handleVerifyPin();
+              }
+            }}
+          >
             <label className="mb-2 block text-sm font-semibold text-gray-700">Enter 4-digit PIN</label>
             <div className="flex gap-2">
               <input
@@ -109,29 +117,28 @@ function Download() {
               />
             </div>
             <p className="mt-2 text-xs text-gray-500">Enter the 4-digit PIN you received</p>
-          </div>
-
-          <button
-            onClick={handleVerifyPin}
-            disabled={loading || pin.length !== 4}
-            className={`w-full rounded-lg px-6 py-3 font-semibold transition duration-200 ${
-              loading || pin.length !== 4
-                ? 'cursor-not-allowed bg-gray-300 text-gray-500'
-                : 'bg-green-500 text-white hover:bg-green-600'
-            }`}
-          >
-            {loading ? (
-              <span className="flex items-center justify-center">
-                <svg className="-ml-1 mr-3 h-5 w-5 animate-spin text-white" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-                Verifying...
-              </span>
-            ) : (
-              'Verify PIN'
-            )}
-          </button>
+            <button
+              type="submit"
+              disabled={loading || pin.length !== 4}
+              className={`mt-6 w-full rounded-lg px-6 py-3 font-semibold transition duration-200 ${
+                loading || pin.length !== 4
+                  ? 'cursor-not-allowed bg-gray-300 text-gray-500'
+                  : 'bg-green-500 text-white hover:bg-green-600'
+              }`}
+            >
+              {loading ? (
+                <span className="flex items-center justify-center">
+                  <svg className="-ml-1 mr-3 h-5 w-5 animate-spin text-white" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  Verifying...
+                </span>
+              ) : (
+                'Verify PIN'
+              )}
+            </button>
+          </form>
 
           {error && (
             <div className="mt-4 flex items-start rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-left text-red-700">

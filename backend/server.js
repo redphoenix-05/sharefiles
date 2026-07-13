@@ -3,10 +3,11 @@ const mongoose = require('mongoose');
 const cors = require('cors');
 const multer = require('multer');
 const helmet = require('helmet');
+const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const archiver = require('archiver');
 const { GridFSBucket, ObjectId } = require('mongodb');
-const { Readable } = require('stream');
 require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
 
 const Share = require('./models/Share');
@@ -47,6 +48,13 @@ const allowedMimeTypes = new Set(
 let connectionPromise;
 let bucket;
 const rateLimitStore = new Map();
+const tempUploadDir = path.join(os.tmpdir(), 'sharefiles-uploads');
+
+try {
+  fs.mkdirSync(tempUploadDir, { recursive: true });
+} catch (error) {
+  console.error('Failed to prepare upload temp directory:', error);
+}
 
 app.set('trust proxy', 1);
 app.use(
@@ -59,7 +67,15 @@ app.use(express.json({ limit: '256kb' }));
 app.use(express.urlencoded({ extended: true, limit: '256kb' }));
 
 const upload = multer({
-  storage: multer.memoryStorage(),
+  storage: multer.diskStorage({
+    destination: (req, file, callback) => {
+      callback(null, tempUploadDir);
+    },
+    filename: (req, file, callback) => {
+      const safeName = file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
+      callback(null, `${Date.now()}-${Math.random().toString(36).slice(2, 10)}-${safeName}`);
+    }
+  }),
   limits: {
     // Keep a hard ceiling equal to the total-share limit so one file can use the full allowance.
     fileSize: maxTotalUploadBytes,
@@ -149,6 +165,24 @@ function getExpiryDate() {
 
 function getShareTotalSize(share) {
   return share.files.reduce((total, file) => total + file.size, 0);
+}
+
+async function removeTempFile(filePath) {
+  if (!filePath) {
+    return;
+  }
+
+  try {
+    await fs.promises.unlink(filePath);
+  } catch (error) {
+    if (error.code !== 'ENOENT') {
+      console.error('Failed to remove temp upload file:', error);
+    }
+  }
+}
+
+async function cleanupTempFiles(files) {
+  await Promise.all((files || []).map((file) => removeTempFile(file.path)));
 }
 
 async function deleteStoredFile(storageId) {
@@ -247,14 +281,17 @@ app.post(
   (req, res) => {
     uploadMany(req, res, async (error) => {
       if (error?.code === 'LIMIT_FILE_SIZE') {
+        await cleanupTempFiles(req.files);
         return res.status(400).json({ error: `Total upload size must be less than ${maxTotalUploadMb}MB` });
       }
 
       if (error?.code === 'LIMIT_FILE_COUNT') {
+        await cleanupTempFiles(req.files);
         return res.status(400).json({ error: `You can upload up to ${maxFilesPerShare} files at a time` });
       }
 
       if (error) {
+        await cleanupTempFiles(req.files);
         console.error('Upload middleware error:', error);
         return res.status(400).json({ error: error.message || 'Failed to upload files' });
       }
@@ -265,11 +302,13 @@ app.post(
 
         const files = req.files || [];
         if (files.length === 0) {
+          await cleanupTempFiles(files);
           return res.status(400).json({ error: 'No files uploaded' });
         }
 
         const totalSize = files.reduce((sum, file) => sum + file.size, 0);
         if (totalSize > maxTotalUploadBytes) {
+          await cleanupTempFiles(files);
           return res.status(400).json({ error: `Total upload size must be less than ${maxTotalUploadMb}MB` });
         }
 
@@ -296,7 +335,7 @@ app.post(
           });
 
           await new Promise((resolve, reject) => {
-            Readable.from(file.buffer)
+            fs.createReadStream(file.path)
               .pipe(uploadStream)
               .on('error', reject)
               .on('finish', resolve);
@@ -308,6 +347,9 @@ app.post(
             mimetype: file.mimetype,
             size: file.size
           });
+          file.storageId = uploadStream.id.toString();
+
+          await removeTempFile(file.path);
         }
 
         const share = new Share({
@@ -325,6 +367,15 @@ app.post(
           maxTotalUploadMb
         });
       } catch (uploadError) {
+        const uploadedFiles = req.files || [];
+        if (Array.isArray(uploadedFiles)) {
+          for (const file of uploadedFiles) {
+            if (file?.storageId) {
+              await deleteStoredFile(file.storageId);
+            }
+          }
+        }
+        await cleanupTempFiles(req.files);
         console.error('Upload error:', uploadError);
         return res.status(500).json({ error: getDatabaseErrorMessage(uploadError) });
       }

@@ -19,25 +19,33 @@ function Upload() {
   const [dragActive, setDragActive] = useState(false);
 
   const handleFileSelect = (e) => {
-    validateAndSetFiles(Array.from(e.target.files || []));
+    validateAndSetFiles(Array.from(e.target.files || []), true);
+    e.target.value = '';
   };
 
-  const validateAndSetFiles = (files) => {
+  const handleGallerySelect = (e) => {
+    validateAndSetFiles(Array.from(e.target.files || []), true);
+    e.target.value = '';
+  };
+
+  const validateAndSetFiles = (files, append = false) => {
     if (!files.length) return;
 
-    if (files.length > MAX_FILES_PER_SHARE) {
+    const nextFiles = append ? [...selectedFiles, ...files] : files;
+
+    if (nextFiles.length > MAX_FILES_PER_SHARE) {
       setError(`You can upload up to ${MAX_FILES_PER_SHARE} files at a time`);
       return;
     }
 
     const maxSize = MAX_TOTAL_UPLOAD_MB * 1024 * 1024;
-    const totalSize = files.reduce((sum, file) => sum + file.size, 0);
+    const totalSize = nextFiles.reduce((sum, file) => sum + file.size, 0);
     if (totalSize > maxSize) {
       setError(`Total upload size must be less than ${MAX_TOTAL_UPLOAD_MB}MB`);
       return;
     }
 
-    setSelectedFiles(files);
+    setSelectedFiles(nextFiles);
     setError('');
     setUploadSuccess(false);
     setUploadProgress(0);
@@ -61,7 +69,7 @@ function Upload() {
     setDragActive(false);
 
     if (e.dataTransfer.files && e.dataTransfer.files.length) {
-      validateAndSetFiles(Array.from(e.dataTransfer.files));
+      validateAndSetFiles(Array.from(e.dataTransfer.files), true);
     }
   };
 
@@ -121,7 +129,7 @@ function Upload() {
 
         request.addEventListener('abort', () => {
           reject({ request });
-        }
+        });
 
         request.send(formData);
       });
@@ -246,6 +254,14 @@ function Upload() {
           multiple
           onChange={handleFileSelect}
         />
+        <input
+          type="file"
+          id="galleryInput"
+          className="hidden"
+          accept="image/*"
+          multiple
+          onChange={handleGallerySelect}
+        />
 
         {!selectedFiles.length ? (
           <>
@@ -256,12 +272,20 @@ function Upload() {
             </div>
             <p className="mb-2 text-sm text-gray-600 sm:text-base">Drag and drop your files here</p>
             <p className="mb-4 text-sm text-gray-500">or</p>
-            <label
-              htmlFor="fileInput"
-              className="inline-block cursor-pointer rounded-lg bg-blue-500 px-6 py-2 font-semibold text-white transition duration-200 hover:bg-blue-600"
-            >
-              Browse Files
-            </label>
+            <div className="flex flex-col items-center justify-center gap-3 sm:flex-row">
+              <label
+                htmlFor="fileInput"
+                className="inline-block cursor-pointer rounded-lg bg-blue-500 px-6 py-2 font-semibold text-white transition duration-200 hover:bg-blue-600"
+              >
+                Add File
+              </label>
+              <label
+                htmlFor="galleryInput"
+                className="inline-block cursor-pointer rounded-lg border border-blue-200 bg-blue-50 px-6 py-2 font-semibold text-blue-700 transition duration-200 hover:bg-blue-100"
+              >
+                Choose from Gallery
+              </label>
+            </div>
             <p className="mt-4 text-xs text-gray-500">
               Up to {MAX_FILES_PER_SHARE} files, {MAX_TOTAL_UPLOAD_MB}MB total
             </p>
@@ -319,25 +343,37 @@ function Upload() {
               </div>
             </div>
 
-            <button
-              onClick={handleUpload}
-              disabled={uploading}
-              className={`w-full rounded-lg px-6 py-3 font-semibold transition duration-200 ${
-                uploading ? 'cursor-not-allowed bg-gray-400' : 'bg-blue-500 text-white hover:bg-blue-600'
-              }`}
-            >
-              {uploading ? (
-                <span className="flex items-center justify-center">
-                  <svg className="-ml-1 mr-3 h-5 w-5 animate-spin text-white" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
-                  Uploading {uploadProgress}%
-                </span>
-              ) : (
-                'Upload Files'
-              )}
-            </button>
+            <div className="flex flex-col gap-3 sm:flex-row">
+              <label
+                htmlFor="fileInput"
+                className={`flex-1 rounded-lg border-2 border-blue-200 px-6 py-3 text-center font-semibold transition duration-200 ${
+                  uploading
+                    ? 'cursor-not-allowed border-gray-200 bg-gray-100 text-gray-400'
+                    : 'cursor-pointer bg-white text-blue-600 hover:bg-blue-50'
+                }`}
+              >
+                Upload More
+              </label>
+              <button
+                onClick={handleUpload}
+                disabled={uploading}
+                className={`flex-1 rounded-lg px-6 py-3 font-semibold transition duration-200 ${
+                  uploading ? 'cursor-not-allowed bg-gray-400' : 'bg-blue-500 text-white hover:bg-blue-600'
+                }`}
+              >
+                {uploading ? (
+                  <span className="flex items-center justify-center">
+                    <svg className="-ml-1 mr-3 h-5 w-5 animate-spin text-white" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    Uploading {uploadProgress}%
+                  </span>
+                ) : (
+                  'Share'
+                )}
+              </button>
+            </div>
             <p className="text-xs text-gray-500">
               Each PIN expires after {SHARE_EXPIRY_HOURS} hours and allows {PIN_DOWNLOAD_LIMIT} downloads.
             </p>
