@@ -176,6 +176,21 @@ async function removeShare(share) {
 }
 
 async function cleanupExpiredShares() {
+  const currentBucket = await connectToDatabase();
+  const expiredStoredFiles = await currentBucket
+    .find({ 'metadata.expiresAt': { $lte: new Date() } })
+    .toArray();
+
+  for (const storedFile of expiredStoredFiles) {
+    try {
+      await currentBucket.delete(storedFile._id);
+    } catch (error) {
+      if (error.code !== 26) {
+        console.error('Failed to clean up expired stored file:', error);
+      }
+    }
+  }
+
   const expiredShares = await Share.find({ expiresAt: { $lte: new Date() } }).select('_id files');
 
   for (const expiredShare of expiredShares) {
@@ -273,7 +288,11 @@ app.post(
 
         for (const file of files) {
           const uploadStream = currentBucket.openUploadStream(file.originalname, {
-            contentType: file.mimetype
+            contentType: file.mimetype,
+            metadata: {
+              sharePin: pin,
+              expiresAt: getExpiryDate()
+            }
           });
 
           await new Promise((resolve, reject) => {

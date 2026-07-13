@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import axios from 'axios';
 
 const API_URL = process.env.REACT_APP_API_URL || '/api';
 const MAX_TOTAL_UPLOAD_MB = Number(
@@ -82,25 +81,55 @@ function Upload() {
     });
 
     try {
-      const response = await axios.post(`${API_URL}/upload`, formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data'
-        },
-        onUploadProgress: (progressEvent) => {
-          const total = progressEvent.total || totalSelectedSize;
+      const response = await new Promise((resolve, reject) => {
+        const request = new XMLHttpRequest();
+        request.open('POST', `${API_URL}/upload`);
+        request.responseType = 'json';
+
+        request.upload.addEventListener('progress', (event) => {
+          const total = event.total || totalSelectedSize;
           if (!total) return;
 
-          const percentCompleted = Math.min(
-            100,
-            Math.round((progressEvent.loaded * 100) / total)
-          );
+          const percentCompleted = Math.min(100, Math.round((event.loaded * 100) / total));
           setUploadProgress(percentCompleted);
+        });
+
+        request.addEventListener('load', () => {
+          const responseData =
+            request.response && typeof request.response === 'object'
+              ? request.response
+              : request.responseText
+                ? JSON.parse(request.responseText)
+                : null;
+
+          if (request.status >= 200 && request.status < 300) {
+            resolve(responseData);
+            return;
+          }
+
+          reject({
+            response: {
+              status: request.status,
+              data: responseData
+            }
+          });
+        });
+
+        request.addEventListener('error', () => {
+          reject({ request });
+        });
+
+        request.addEventListener('abort', () => {
+          reject({ request });
         }
+
+        request.send(formData);
       });
 
-      if (response.data.success) {
-        setPin(response.data.pin);
-        setShareSummary(response.data);
+      if (response?.success) {
+        setUploadProgress(100);
+        setPin(response.pin);
+        setShareSummary(response);
         setUploadSuccess(true);
       }
     } catch (err) {
