@@ -2,31 +2,107 @@ const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
 const multer = require('multer');
+const helmet = require('helmet');
 const path = require('path');
+const archiver = require('archiver');
 const { GridFSBucket, ObjectId } = require('mongodb');
 const { Readable } = require('stream');
 require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
 
-const File = require('./models/File');
+const Share = require('./models/Share');
 
 const app = express();
-const isVercel = process.env.VERCEL === '1' || process.env.VERCEL === 'true';
-const maxFileSizeMb = Number(process.env.MAX_FILE_SIZE_MB || 10);
+const maxFileSizeMb = Number(process.env.MAX_FILE_SIZE_MB || 150);
 const maxFileSizeBytes = maxFileSizeMb * 1024 * 1024;
+const maxFilesPerShare = Number(process.env.MAX_FILES_PER_SHARE || 10);
+const pinDownloadLimit = Number(process.env.PIN_DOWNLOAD_LIMIT || 10);
+const shareExpiryHours = Number(process.env.SHARE_EXPIRY_HOURS || 2);
+const allowedMimeTypes = new Set(
+  (process.env.ALLOWED_UPLOAD_MIME_TYPES ||
+    [
+      'image/jpeg',
+      'image/png',
+      'image/gif',
+      'image/webp',
+      'image/svg+xml',
+      'application/pdf',
+      'text/plain',
+      'text/csv',
+      'application/zip',
+      'application/x-zip-compressed',
+      'application/json',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/vnd.ms-excel',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'application/vnd.ms-powerpoint',
+      'application/vnd.openxmlformats-officedocument.presentationml.presentation'
+    ].join(',')
+  )
+    .split(',')
+    .map((type) => type.trim())
+    .filter(Boolean)
+);
+
 let connectionPromise;
 let bucket;
+const rateLimitStore = new Map();
 
+app.set('trust proxy', 1);
+app.use(
+  helmet({
+    crossOriginResourcePolicy: false
+  })
+);
 app.use(cors());
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '256kb' }));
+app.use(express.urlencoded({ extended: true, limit: '256kb' }));
 
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
-    fileSize: maxFileSizeBytes
+    fileSize: maxFileSizeBytes,
+    files: maxFilesPerShare
+  },
+  fileFilter: (req, file, callback) => {
+    if (!allowedMimeTypes.has(file.mimetype)) {
+      return callback(new Error(`File type not allowed: ${file.originalname}`));
+    }
+
+    return callback(null, true);
   }
 });
-const uploadSingle = upload.single('file');
+const uploadMany = upload.array('files', maxFilesPerShare);
+
+function getClientIp(req) {
+  const forwardedFor = req.headers['x-forwarded-for'];
+  if (typeof forwardedFor === 'string' && forwardedFor.length > 0) {
+    return forwardedFor.split(',')[0].trim();
+  }
+
+  return req.ip || req.socket?.remoteAddress || 'unknown';
+}
+
+function rateLimit({ windowMs, maxRequests, message }) {
+  return (req, res, next) => {
+    const ip = getClientIp(req);
+    const key = `${req.method}:${req.path}:${ip}`;
+    const now = Date.now();
+    const entry = rateLimitStore.get(key);
+
+    if (!entry || entry.expiresAt <= now) {
+      rateLimitStore.set(key, { count: 1, expiresAt: now + windowMs });
+      return next();
+    }
+
+    entry.count += 1;
+    if (entry.count > maxRequests) {
+      return res.status(429).json({ error: message });
+    }
+
+    return next();
+  };
+}
 
 function generatePin() {
   return Math.floor(1000 + Math.random() * 9000).toString();
@@ -67,18 +143,22 @@ function getDatabaseErrorMessage(error) {
 }
 
 function getExpiryDate() {
-  return new Date(Date.now() + 24 * 60 * 60 * 1000);
+  return new Date(Date.now() + shareExpiryHours * 60 * 60 * 1000);
 }
 
-async function deleteStoredFile(file) {
-  if (!file?.storageId || !ObjectId.isValid(file.storageId)) {
+function getShareTotalSize(share) {
+  return share.files.reduce((total, file) => total + file.size, 0);
+}
+
+async function deleteStoredFile(storageId) {
+  if (!storageId || !ObjectId.isValid(storageId)) {
     return;
   }
 
   const currentBucket = await connectToDatabase();
 
   try {
-    await currentBucket.delete(new ObjectId(file.storageId));
+    await currentBucket.delete(new ObjectId(storageId));
   } catch (error) {
     if (error.code !== 26) {
       throw error;
@@ -86,169 +166,260 @@ async function deleteStoredFile(file) {
   }
 }
 
-async function removeFileRecord(file) {
-  await deleteStoredFile(file);
-  await File.deleteOne({ _id: file._id });
+async function removeShare(share) {
+  for (const file of share.files) {
+    await deleteStoredFile(file.storageId);
+  }
+
+  await Share.deleteOne({ _id: share._id });
 }
 
-async function cleanupExpiredFiles() {
-  const expiredFiles = await File.find({ expiresAt: { $lte: new Date() } }).select('_id storageId');
+async function cleanupExpiredShares() {
+  const expiredShares = await Share.find({ expiresAt: { $lte: new Date() } }).select('_id files');
 
-  for (const expiredFile of expiredFiles) {
+  for (const expiredShare of expiredShares) {
     try {
-      await removeFileRecord(expiredFile);
+      await removeShare(expiredShare);
     } catch (error) {
-      console.error('Failed to clean up expired file:', error);
+      console.error('Failed to clean up expired share:', error);
     }
   }
 }
 
-app.post('/api/upload', (req, res) => {
-  uploadSingle(req, res, async (error) => {
-    if (error?.code === 'LIMIT_FILE_SIZE') {
-      return res.status(400).json({
-        error: `File size must be less than ${maxFileSizeMb}MB`
-      });
-    }
+async function getShareByPin(pin) {
+  await connectToDatabase();
+  await cleanupExpiredShares();
 
-    if (error) {
-      console.error('Upload middleware error:', error);
-      return res.status(500).json({ error: 'Failed to upload file' });
-    }
+  const share = await Share.findOne({ pin });
+  if (!share) {
+    return null;
+  }
 
-    try {
-      await connectToDatabase();
-      await cleanupExpiredFiles();
+  if (share.expiresAt <= new Date()) {
+    await removeShare(share);
+    return null;
+  }
 
-      if (!req.file) {
-        return res.status(400).json({ error: 'No file uploaded' });
-      }
+  return share;
+}
 
-      let pin;
-      let pinExists = true;
-
-      while (pinExists) {
-        pin = generatePin();
-        const existingFile = await File.findOne({ pin });
-        if (!existingFile) {
-          pinExists = false;
-        }
-      }
-
-      const currentBucket = await connectToDatabase();
-      const uploadStream = currentBucket.openUploadStream(req.file.originalname, {
-        contentType: req.file.mimetype
-      });
-
-      await new Promise((resolve, reject) => {
-        Readable.from(req.file.buffer)
-          .pipe(uploadStream)
-          .on('error', reject)
-          .on('finish', resolve);
-      });
-
-      const fileData = new File({
-        storageId: uploadStream.id.toString(),
-        originalName: req.file.originalname,
-        mimetype: req.file.mimetype,
-        size: req.file.size,
-        pin,
-        expiresAt: getExpiryDate()
-      });
-
-      await fileData.save();
-
-      return res.json({
-        success: true,
-        pin,
-        filename: req.file.originalname,
-        size: req.file.size,
-        maxFileSizeMb
-      });
-    } catch (uploadError) {
-      console.error('Upload error:', uploadError);
-      return res.status(500).json({ error: getDatabaseErrorMessage(uploadError) });
-    }
-  });
-});
-
-app.get('/api/file/:pin', async (req, res) => {
-  try {
-    await connectToDatabase();
-    await cleanupExpiredFiles();
-
-    const { pin } = req.params;
-    const file = await File.findOne({ pin });
-
-    if (!file) {
-      return res.status(404).json({ error: 'File not found or PIN invalid' });
-    }
-
-    if (file.expiresAt <= new Date()) {
-      await removeFileRecord(file);
-      return res.status(404).json({ error: 'File has expired' });
-    }
-
-    return res.json({
-      success: true,
+function formatShareResponse(share) {
+  return {
+    success: true,
+    pin: share.pin,
+    files: share.files.map((file) => ({
       filename: file.originalName,
       size: file.size,
-      mimetype: file.mimetype,
-      createdAt: file.createdAt
-    });
-  } catch (error) {
-    console.error('File info error:', error);
-    return res.status(500).json({ error: getDatabaseErrorMessage(error) });
-  }
-});
+      mimetype: file.mimetype
+    })),
+    totalSize: getShareTotalSize(share),
+    fileCount: share.files.length,
+    remainingDownloads: share.remainingDownloads,
+    totalDownloadsAllowed: share.totalDownloadsAllowed,
+    createdAt: share.createdAt,
+    expiresAt: share.expiresAt
+  };
+}
 
-app.get('/api/download/:pin', async (req, res) => {
-  try {
-    const currentBucket = await connectToDatabase();
-    await cleanupExpiredFiles();
+app.post(
+  '/api/upload',
+  rateLimit({
+    windowMs: 15 * 60 * 1000,
+    maxRequests: 15,
+    message: 'Too many upload attempts. Please try again later.'
+  }),
+  (req, res) => {
+    uploadMany(req, res, async (error) => {
+      if (error?.code === 'LIMIT_FILE_SIZE') {
+        return res.status(400).json({ error: `Each file must be less than ${maxFileSizeMb}MB` });
+      }
 
-    const { pin } = req.params;
-    const file = await File.findOne({ pin });
+      if (error?.code === 'LIMIT_FILE_COUNT') {
+        return res.status(400).json({ error: `You can upload up to ${maxFilesPerShare} files at a time` });
+      }
 
-    if (!file) {
-      return res.status(404).json({ error: 'File not found or PIN invalid' });
-    }
+      if (error) {
+        console.error('Upload middleware error:', error);
+        return res.status(400).json({ error: error.message || 'Failed to upload files' });
+      }
 
-    if (file.expiresAt <= new Date()) {
-      await removeFileRecord(file);
-      return res.status(404).json({ error: 'File has expired' });
-    }
+      try {
+        await connectToDatabase();
+        await cleanupExpiredShares();
 
-    res.setHeader('Content-Type', file.mimetype);
-    res.setHeader('Content-Length', file.size);
-    res.setHeader(
-      'Content-Disposition',
-      `attachment; filename="${encodeURIComponent(file.originalName)}"`
-    );
+        const files = req.files || [];
+        if (files.length === 0) {
+          return res.status(400).json({ error: 'No files uploaded' });
+        }
 
-    const downloadStream = currentBucket.openDownloadStream(new ObjectId(file.storageId));
+        const totalSize = files.reduce((sum, file) => sum + file.size, 0);
+        if (totalSize > maxFileSizeBytes) {
+          return res.status(400).json({ error: `Total upload size must be less than ${maxFileSizeMb}MB` });
+        }
 
-    downloadStream.on('error', (error) => {
-      console.error('Download stream error:', error);
-      if (!res.headersSent) {
-        res.status(404).json({ error: 'File not found on server' });
-      } else {
-        res.end();
+        let pin;
+        let pinExists = true;
+        while (pinExists) {
+          pin = generatePin();
+          const existingShare = await Share.findOne({ pin });
+          if (!existingShare) {
+            pinExists = false;
+          }
+        }
+
+        const currentBucket = await connectToDatabase();
+        const uploadedFiles = [];
+
+        for (const file of files) {
+          const uploadStream = currentBucket.openUploadStream(file.originalname, {
+            contentType: file.mimetype
+          });
+
+          await new Promise((resolve, reject) => {
+            Readable.from(file.buffer)
+              .pipe(uploadStream)
+              .on('error', reject)
+              .on('finish', resolve);
+          });
+
+          uploadedFiles.push({
+            storageId: uploadStream.id.toString(),
+            originalName: file.originalname,
+            mimetype: file.mimetype,
+            size: file.size
+          });
+        }
+
+        const share = new Share({
+          pin,
+          files: uploadedFiles,
+          remainingDownloads: pinDownloadLimit,
+          totalDownloadsAllowed: pinDownloadLimit,
+          expiresAt: getExpiryDate()
+        });
+
+        await share.save();
+
+        return res.json({
+          ...formatShareResponse(share),
+          maxFileSizeMb
+        });
+      } catch (uploadError) {
+        console.error('Upload error:', uploadError);
+        return res.status(500).json({ error: getDatabaseErrorMessage(uploadError) });
       }
     });
-
-    downloadStream.pipe(res);
-  } catch (error) {
-    console.error('Download error:', error);
-    return res.status(500).json({ error: getDatabaseErrorMessage(error) });
   }
-});
+);
+
+app.get(
+  '/api/file/:pin',
+  rateLimit({
+    windowMs: 10 * 60 * 1000,
+    maxRequests: 60,
+    message: 'Too many PIN checks. Please try again later.'
+  }),
+  async (req, res) => {
+    try {
+      const share = await getShareByPin(req.params.pin);
+
+      if (!share) {
+        return res.status(404).json({ error: 'Files not found or PIN invalid' });
+      }
+
+      if (share.remainingDownloads <= 0) {
+        await removeShare(share);
+        return res.status(410).json({ error: 'This PIN has reached its download limit' });
+      }
+
+      return res.json(formatShareResponse(share));
+    } catch (error) {
+      console.error('File info error:', error);
+      return res.status(500).json({ error: getDatabaseErrorMessage(error) });
+    }
+  }
+);
+
+app.get(
+  '/api/download/:pin',
+  rateLimit({
+    windowMs: 10 * 60 * 1000,
+    maxRequests: 25,
+    message: 'Too many download attempts. Please try again later.'
+  }),
+  async (req, res) => {
+    try {
+      const share = await getShareByPin(req.params.pin);
+
+      if (!share) {
+        return res.status(404).json({ error: 'Files not found or PIN invalid' });
+      }
+
+      if (share.remainingDownloads <= 0) {
+        await removeShare(share);
+        return res.status(410).json({ error: 'This PIN has reached its download limit' });
+      }
+
+      share.remainingDownloads -= 1;
+      await share.save();
+
+      const archiveName =
+        share.files.length === 1 ? share.files[0].originalName : `sharefiles-${share.pin}.zip`;
+
+      if (share.files.length === 1) {
+        const file = share.files[0];
+        res.setHeader('Content-Type', file.mimetype);
+        res.setHeader('Content-Length', file.size);
+        res.setHeader('X-Remaining-Downloads', String(share.remainingDownloads));
+        res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(archiveName)}"`);
+
+        const currentBucket = await connectToDatabase();
+        const downloadStream = currentBucket.openDownloadStream(new ObjectId(file.storageId));
+
+        downloadStream.on('error', (error) => {
+          console.error('Download stream error:', error);
+          if (!res.headersSent) {
+            res.status(404).json({ error: 'File not found on server' });
+          } else {
+            res.end();
+          }
+        });
+
+        return downloadStream.pipe(res);
+      }
+
+      res.setHeader('Content-Type', 'application/zip');
+      res.setHeader('X-Remaining-Downloads', String(share.remainingDownloads));
+      res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(archiveName)}"`);
+
+      const archive = archiver('zip', { zlib: { level: 9 } });
+      archive.on('error', (error) => {
+        throw error;
+      });
+      archive.pipe(res);
+
+      const currentBucket = await connectToDatabase();
+      for (const file of share.files) {
+        const stream = currentBucket.openDownloadStream(new ObjectId(file.storageId));
+        archive.append(stream, { name: file.originalName });
+      }
+
+      return archive.finalize();
+    } catch (error) {
+      console.error('Download error:', error);
+      return res.status(500).json({ error: getDatabaseErrorMessage(error) });
+    }
+  }
+);
 
 app.get('/api/health', (req, res) => {
   res.json({
     status: 'OK',
     message: 'Server is running',
     maxFileSizeMb,
+    maxFilesPerShare,
+    pinDownloadLimit,
+    shareExpiryHours,
     storage: 'mongodb-gridfs',
     databaseConfigured: Boolean(process.env.MONGODB_URI)
   });

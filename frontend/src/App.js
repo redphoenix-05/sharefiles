@@ -3,8 +3,10 @@ import Upload from './components/Upload';
 import Download from './components/Download';
 
 const MAX_FILE_SIZE_MB = Number(
-  process.env.REACT_APP_MAX_FILE_SIZE_MB || 10
+  process.env.REACT_APP_MAX_FILE_SIZE_MB || 150
 );
+const PIN_DOWNLOAD_LIMIT = Number(process.env.REACT_APP_PIN_DOWNLOAD_LIMIT || 10);
+const SHARE_EXPIRY_HOURS = Number(process.env.REACT_APP_SHARE_EXPIRY_HOURS || 2);
 
 function App() {
   const [activeTab, setActiveTab] = useState('send');
@@ -78,13 +80,19 @@ function App() {
                 <svg className="w-5 h-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
-                <span>24-hour expiry</span>
+                <span>{SHARE_EXPIRY_HOURS}-hour expiry</span>
               </div>
               <div className="flex items-center justify-center gap-2 rounded-xl bg-purple-50/50 px-4 py-3 sm:col-span-2 lg:col-span-1">
                 <svg className="w-5 h-5 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                 </svg>
-                <span>Max {MAX_FILE_SIZE_MB}MB per file</span>
+                <span>Max {MAX_FILE_SIZE_MB}MB per share</span>
+              </div>
+              <div className="flex items-center justify-center gap-2 rounded-xl bg-amber-50/70 px-4 py-3 sm:col-span-2 lg:col-span-3">
+                <svg className="w-5 h-5 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m-9 4h12a2 2 0 002-2V7a2 2 0 00-2-2h-3l-1-2H10L9 5H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+                <span>Each PIN allows {PIN_DOWNLOAD_LIMIT} downloads</span>
               </div>
             </div>
           </div>

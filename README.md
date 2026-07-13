@@ -4,10 +4,10 @@ A secure file sharing application built with the MERN stack that allows users to
 
 ## Features
 
-- 📤 **Upload Files**: Upload files up to 50MB
+- 📤 **Upload Files**: Upload up to 10 files with a combined size of 150MB
 - 📥 **Download Files**: Download files using a 4-digit PIN
 - 🔒 **Secure**: PIN-based authentication for file access
-- ⏰ **Auto-Expiry**: Files automatically expire after 24 hours
+- ⏰ **Auto-Expiry**: Shares automatically expire after 2 hours
 - 🎨 **Modern UI**: Beautiful interface built with Tailwind CSS
 - 📱 **Responsive**: Works on all devices
 
@@ -57,7 +57,10 @@ Create a `.env` file in the project root using `.env.example` as a guide:
 PORT=5000
 MONGODB_URI=mongodb://localhost:27017/sharefiles
 NODE_ENV=development
-MAX_FILE_SIZE_MB=10
+MAX_FILE_SIZE_MB=150
+MAX_FILES_PER_SHARE=10
+PIN_DOWNLOAD_LIMIT=10
+SHARE_EXPIRY_HOURS=2
 ```
 
 ## Running the Application
@@ -160,7 +163,7 @@ sharefiles/
 - File size validation (environment-configurable)
 - 4-digit PIN generation
 - Unique PIN for each file
-- Automatic file expiration after 24 hours
+- Automatic share expiration after 2 hours
 - CORS protection
 
 ## Vercel Deployment
@@ -176,10 +179,13 @@ Set these environment variables in Vercel before deploying:
 ```bash
 MONGODB_URI=your-mongodb-connection-string
 NODE_ENV=production
-MAX_FILE_SIZE_MB=10
+MAX_FILE_SIZE_MB=150
+MAX_FILES_PER_SHARE=10
+PIN_DOWNLOAD_LIMIT=10
+SHARE_EXPIRY_HOURS=2
 ```
 
-`MAX_FILE_SIZE_MB=10` is the current app limit for both local development and Vercel.
+The app now supports multi-file shares up to `150MB` total, each share expires after `2` hours, and each PIN can be used `10` times.
 
 ## Future Enhancements
 
