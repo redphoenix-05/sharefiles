@@ -2,7 +2,9 @@ import React, { useState } from 'react';
 import axios from 'axios';
 
 const API_URL = process.env.REACT_APP_API_URL || '/api';
-const MAX_FILE_SIZE_MB = Number(process.env.REACT_APP_MAX_FILE_SIZE_MB || 150);
+const MAX_TOTAL_UPLOAD_MB = Number(
+  process.env.REACT_APP_MAX_TOTAL_UPLOAD_MB || process.env.REACT_APP_MAX_FILE_SIZE_MB || 150
+);
 const MAX_FILES_PER_SHARE = Number(process.env.REACT_APP_MAX_FILES_PER_SHARE || 10);
 const PIN_DOWNLOAD_LIMIT = Number(process.env.REACT_APP_PIN_DOWNLOAD_LIMIT || 10);
 const SHARE_EXPIRY_HOURS = Number(process.env.REACT_APP_SHARE_EXPIRY_HOURS || 2);
@@ -28,10 +30,10 @@ function Upload() {
       return;
     }
 
-    const maxSize = MAX_FILE_SIZE_MB * 1024 * 1024;
+    const maxSize = MAX_TOTAL_UPLOAD_MB * 1024 * 1024;
     const totalSize = files.reduce((sum, file) => sum + file.size, 0);
     if (totalSize > maxSize) {
-      setError(`Total upload size must be less than ${MAX_FILE_SIZE_MB}MB`);
+      setError(`Total upload size must be less than ${MAX_TOTAL_UPLOAD_MB}MB`);
       return;
     }
 
@@ -217,7 +219,7 @@ function Upload() {
               Browse Files
             </label>
             <p className="mt-4 text-xs text-gray-500">
-              Up to {MAX_FILES_PER_SHARE} files, {MAX_FILE_SIZE_MB}MB total
+              Up to {MAX_FILES_PER_SHARE} files, {MAX_TOTAL_UPLOAD_MB}MB total
             </p>
           </>
         ) : (

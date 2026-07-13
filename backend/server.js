@@ -12,8 +12,8 @@ require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
 const Share = require('./models/Share');
 
 const app = express();
-const maxFileSizeMb = Number(process.env.MAX_FILE_SIZE_MB || 150);
-const maxFileSizeBytes = maxFileSizeMb * 1024 * 1024;
+const maxTotalUploadMb = Number(process.env.MAX_TOTAL_UPLOAD_MB || process.env.MAX_FILE_SIZE_MB || 150);
+const maxTotalUploadBytes = maxTotalUploadMb * 1024 * 1024;
 const maxFilesPerShare = Number(process.env.MAX_FILES_PER_SHARE || 10);
 const pinDownloadLimit = Number(process.env.PIN_DOWNLOAD_LIMIT || 10);
 const shareExpiryHours = Number(process.env.SHARE_EXPIRY_HOURS || 2);
@@ -61,7 +61,8 @@ app.use(express.urlencoded({ extended: true, limit: '256kb' }));
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
-    fileSize: maxFileSizeBytes,
+    // Keep a hard ceiling equal to the total-share limit so one file can use the full allowance.
+    fileSize: maxTotalUploadBytes,
     files: maxFilesPerShare
   },
   fileFilter: (req, file, callback) => {
@@ -231,7 +232,7 @@ app.post(
   (req, res) => {
     uploadMany(req, res, async (error) => {
       if (error?.code === 'LIMIT_FILE_SIZE') {
-        return res.status(400).json({ error: `Each file must be less than ${maxFileSizeMb}MB` });
+        return res.status(400).json({ error: `Total upload size must be less than ${maxTotalUploadMb}MB` });
       }
 
       if (error?.code === 'LIMIT_FILE_COUNT') {
@@ -253,8 +254,8 @@ app.post(
         }
 
         const totalSize = files.reduce((sum, file) => sum + file.size, 0);
-        if (totalSize > maxFileSizeBytes) {
-          return res.status(400).json({ error: `Total upload size must be less than ${maxFileSizeMb}MB` });
+        if (totalSize > maxTotalUploadBytes) {
+          return res.status(400).json({ error: `Total upload size must be less than ${maxTotalUploadMb}MB` });
         }
 
         let pin;
@@ -302,7 +303,7 @@ app.post(
 
         return res.json({
           ...formatShareResponse(share),
-          maxFileSizeMb
+          maxTotalUploadMb
         });
       } catch (uploadError) {
         console.error('Upload error:', uploadError);
@@ -416,7 +417,7 @@ app.get('/api/health', (req, res) => {
   res.json({
     status: 'OK',
     message: 'Server is running',
-    maxFileSizeMb,
+    maxTotalUploadMb,
     maxFilesPerShare,
     pinDownloadLimit,
     shareExpiryHours,

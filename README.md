@@ -57,7 +57,7 @@ Create a `.env` file in the project root using `.env.example` as a guide:
 PORT=5000
 MONGODB_URI=mongodb://localhost:27017/sharefiles
 NODE_ENV=development
-MAX_FILE_SIZE_MB=150
+MAX_TOTAL_UPLOAD_MB=150
 MAX_FILES_PER_SHARE=10
 PIN_DOWNLOAD_LIMIT=10
 SHARE_EXPIRY_HOURS=2
@@ -179,7 +179,7 @@ Set these environment variables in Vercel before deploying:
 ```bash
 MONGODB_URI=your-mongodb-connection-string
 NODE_ENV=production
-MAX_FILE_SIZE_MB=150
+MAX_TOTAL_UPLOAD_MB=150
 MAX_FILES_PER_SHARE=10
 PIN_DOWNLOAD_LIMIT=10
 SHARE_EXPIRY_HOURS=2

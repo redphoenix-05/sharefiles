@@ -2,8 +2,8 @@ import React, { useState } from 'react';
 import Upload from './components/Upload';
 import Download from './components/Download';
 
-const MAX_FILE_SIZE_MB = Number(
-  process.env.REACT_APP_MAX_FILE_SIZE_MB || 150
+const MAX_TOTAL_UPLOAD_MB = Number(
+  process.env.REACT_APP_MAX_TOTAL_UPLOAD_MB || process.env.REACT_APP_MAX_FILE_SIZE_MB || 150
 );
 const PIN_DOWNLOAD_LIMIT = Number(process.env.REACT_APP_PIN_DOWNLOAD_LIMIT || 10);
 const SHARE_EXPIRY_HOURS = Number(process.env.REACT_APP_SHARE_EXPIRY_HOURS || 2);
@@ -86,7 +86,7 @@ function App() {
                 <svg className="w-5 h-5 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                 </svg>
-                <span>Max {MAX_FILE_SIZE_MB}MB per share</span>
+                <span>Max {MAX_TOTAL_UPLOAD_MB}MB per share</span>
               </div>
               <div className="flex items-center justify-center gap-2 rounded-xl bg-amber-50/70 px-4 py-3 sm:col-span-2 lg:col-span-3">
                 <svg className="w-5 h-5 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
