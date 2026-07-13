@@ -3,6 +3,7 @@ const mongoose = require('mongoose');
 const cors = require('cors');
 const multer = require('multer');
 const helmet = require('helmet');
+const crypto = require('crypto');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -18,6 +19,8 @@ const maxTotalUploadBytes = maxTotalUploadMb * 1024 * 1024;
 const maxFilesPerShare = Number(process.env.MAX_FILES_PER_SHARE || 10);
 const pinDownloadLimit = Number(process.env.PIN_DOWNLOAD_LIMIT || 10);
 const shareExpiryHours = Number(process.env.SHARE_EXPIRY_HOURS || 2);
+const adminPassword = process.env.ADMIN_PASSWORD || 'admin123';
+const adminSessionHours = Number(process.env.ADMIN_SESSION_HOURS || 12);
 const allowedMimeTypes = new Set(
   (process.env.ALLOWED_UPLOAD_MIME_TYPES ||
     [
@@ -48,7 +51,10 @@ const allowedMimeTypes = new Set(
 let connectionPromise;
 let bucket;
 const rateLimitStore = new Map();
+const adminSessions = new Map();
 const tempUploadDir = path.join(os.tmpdir(), 'sharefiles-uploads');
+let cleanupPromise = null;
+let lastCleanupStartedAt = 0;
 
 try {
   fs.mkdirSync(tempUploadDir, { recursive: true });
@@ -236,9 +242,27 @@ async function cleanupExpiredShares() {
   }
 }
 
+function scheduleCleanupExpiredShares() {
+  const now = Date.now();
+  const minimumIntervalMs = 10 * 60 * 1000;
+
+  if (cleanupPromise || now - lastCleanupStartedAt < minimumIntervalMs) {
+    return;
+  }
+
+  lastCleanupStartedAt = now;
+  cleanupPromise = cleanupExpiredShares()
+    .catch((error) => {
+      console.error('Background share cleanup failed:', error);
+    })
+    .finally(() => {
+      cleanupPromise = null;
+    });
+}
+
 async function getShareByPin(pin) {
   await connectToDatabase();
-  await cleanupExpiredShares();
+  scheduleCleanupExpiredShares();
 
   const share = await Share.findOne({ pin });
   if (!share) {
@@ -271,6 +295,59 @@ function formatShareResponse(share) {
   };
 }
 
+function formatAdminShareResponse(share) {
+  return {
+    id: share._id.toString(),
+    pin: share.pin,
+    files: share.files.map((file) => ({
+      storageId: file.storageId,
+      filename: file.originalName,
+      mimetype: file.mimetype,
+      size: file.size
+    })),
+    totalSize: getShareTotalSize(share),
+    fileCount: share.files.length,
+    remainingDownloads: share.remainingDownloads,
+    totalDownloadsAllowed: share.totalDownloadsAllowed,
+    createdAt: share.createdAt,
+    expiresAt: share.expiresAt
+  };
+}
+
+function createAdminSession() {
+  const token = crypto.randomBytes(24).toString('hex');
+  adminSessions.set(token, {
+    expiresAt: Date.now() + adminSessionHours * 60 * 60 * 1000
+  });
+
+  return token;
+}
+
+function getAdminToken(req) {
+  const authHeader = req.headers.authorization || '';
+  if (authHeader.startsWith('Bearer ')) {
+    return authHeader.slice('Bearer '.length).trim();
+  }
+
+  return '';
+}
+
+function requireAdminAuth(req, res, next) {
+  const token = getAdminToken(req);
+  const session = adminSessions.get(token);
+
+  if (!session) {
+    return res.status(401).json({ error: 'Admin authentication required' });
+  }
+
+  if (session.expiresAt <= Date.now()) {
+    adminSessions.delete(token);
+    return res.status(401).json({ error: 'Admin session expired' });
+  }
+
+  return next();
+}
+
 app.post(
   '/api/upload',
   rateLimit({
@@ -298,7 +375,7 @@ app.post(
 
       try {
         await connectToDatabase();
-        await cleanupExpiredShares();
+        scheduleCleanupExpiredShares();
 
         const files = req.files || [];
         if (files.length === 0) {
@@ -494,6 +571,48 @@ app.get('/api/health', (req, res) => {
     storage: 'mongodb-gridfs',
     databaseConfigured: Boolean(process.env.MONGODB_URI)
   });
+});
+
+app.post(
+  '/api/admin/login',
+  rateLimit({
+    windowMs: 10 * 60 * 1000,
+    maxRequests: 20,
+    message: 'Too many admin login attempts. Please try again later.'
+  }),
+  (req, res) => {
+    const submittedPassword = typeof req.body?.password === 'string' ? req.body.password : '';
+
+    if (submittedPassword !== adminPassword) {
+      return res.status(401).json({ error: 'Invalid admin password' });
+    }
+
+    const token = createAdminSession();
+    return res.json({
+      success: true,
+      token,
+      expiresInHours: adminSessionHours
+    });
+  }
+);
+
+app.get('/api/admin/shares', requireAdminAuth, async (req, res) => {
+  try {
+    await connectToDatabase();
+    scheduleCleanupExpiredShares();
+
+    const shares = await Share.find({})
+      .sort({ createdAt: -1 })
+      .lean();
+
+    return res.json({
+      success: true,
+      shares: shares.map(formatAdminShareResponse)
+    });
+  } catch (error) {
+    console.error('Admin shares error:', error);
+    return res.status(500).json({ error: getDatabaseErrorMessage(error) });
+  }
 });
 
 const PORT = process.env.PORT || 5000;

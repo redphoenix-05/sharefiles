@@ -17,13 +17,9 @@ function Upload() {
   const [shareSummary, setShareSummary] = useState(null);
   const [error, setError] = useState('');
   const [dragActive, setDragActive] = useState(false);
+  const [isFinalizingUpload, setIsFinalizingUpload] = useState(false);
 
   const handleFileSelect = (e) => {
-    validateAndSetFiles(Array.from(e.target.files || []), true);
-    e.target.value = '';
-  };
-
-  const handleGallerySelect = (e) => {
     validateAndSetFiles(Array.from(e.target.files || []), true);
     e.target.value = '';
   };
@@ -81,6 +77,7 @@ function Upload() {
 
     setUploading(true);
     setUploadProgress(0);
+    setIsFinalizingUpload(false);
     setError('');
 
     const formData = new FormData();
@@ -100,6 +97,9 @@ function Upload() {
 
           const percentCompleted = Math.min(100, Math.round((event.loaded * 100) / total));
           setUploadProgress(percentCompleted);
+          if (percentCompleted >= 100) {
+            setIsFinalizingUpload(true);
+          }
         });
 
         request.addEventListener('load', () => {
@@ -136,6 +136,7 @@ function Upload() {
 
       if (response?.success) {
         setUploadProgress(100);
+        setIsFinalizingUpload(false);
         setPin(response.pin);
         setShareSummary(response);
         setUploadSuccess(true);
@@ -149,6 +150,7 @@ function Upload() {
     } finally {
       setUploading(false);
       setUploadProgress(0);
+      setIsFinalizingUpload(false);
     }
   };
 
@@ -252,15 +254,8 @@ function Upload() {
           id="fileInput"
           className="hidden"
           multiple
+          accept="image/*,application/pdf,text/plain,text/csv,application/zip,application/x-zip-compressed,application/json,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation"
           onChange={handleFileSelect}
-        />
-        <input
-          type="file"
-          id="galleryInput"
-          className="hidden"
-          accept="image/*"
-          multiple
-          onChange={handleGallerySelect}
         />
 
         {!selectedFiles.length ? (
@@ -272,20 +267,12 @@ function Upload() {
             </div>
             <p className="mb-2 text-sm text-gray-600 sm:text-base">Drag and drop your files here</p>
             <p className="mb-4 text-sm text-gray-500">or</p>
-            <div className="flex flex-col items-center justify-center gap-3 sm:flex-row">
-              <label
-                htmlFor="fileInput"
-                className="inline-block cursor-pointer rounded-lg bg-blue-500 px-6 py-2 font-semibold text-white transition duration-200 hover:bg-blue-600"
-              >
-                Add File
-              </label>
-              <label
-                htmlFor="galleryInput"
-                className="inline-block cursor-pointer rounded-lg border border-blue-200 bg-blue-50 px-6 py-2 font-semibold text-blue-700 transition duration-200 hover:bg-blue-100"
-              >
-                Choose from Gallery
-              </label>
-            </div>
+            <label
+              htmlFor="fileInput"
+              className="inline-block cursor-pointer rounded-lg bg-blue-500 px-6 py-2 font-semibold text-white transition duration-200 hover:bg-blue-600"
+            >
+              Browse Files
+            </label>
             <p className="mt-4 text-xs text-gray-500">
               Up to {MAX_FILES_PER_SHARE} files, {MAX_TOTAL_UPLOAD_MB}MB total
             </p>
@@ -315,8 +302,8 @@ function Upload() {
                   {uploading && (
                     <div className="mt-4">
                       <div className="mb-2 flex items-center justify-between text-xs font-semibold text-blue-700">
-                        <span>Uploading share</span>
-                        <span>{uploadProgress}%</span>
+                        <span>{isFinalizingUpload ? 'Finalizing share' : 'Uploading share'}</span>
+                        <span>{isFinalizingUpload ? 'Almost done' : `${uploadProgress}%`}</span>
                       </div>
                       <div className="h-2.5 overflow-hidden rounded-full bg-blue-100">
                         <div
@@ -367,7 +354,7 @@ function Upload() {
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                     </svg>
-                    Uploading {uploadProgress}%
+                    {isFinalizingUpload ? 'Finalizing Share...' : `Uploading ${uploadProgress}%`}
                   </span>
                 ) : (
                   'Share'
